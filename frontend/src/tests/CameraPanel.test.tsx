@@ -107,4 +107,50 @@ describe('CameraPanel Component', () => {
     expect(screen.getByText(/Car: 5/i)).toBeInTheDocument();
     expect(screen.getByText(/Moto: 3/i)).toBeInTheDocument();
   });
+
+  it('renders upload footage button and opens upload modal upon click', () => {
+    render(
+      <CameraPanel
+        cameras={mockCameras}
+        selectedCameraId="CAM-01"
+      />
+    );
+
+    const uploadBtn = screen.getByRole('button', { name: /UPLOAD FOOTAGE/i });
+    expect(uploadBtn).toBeInTheDocument();
+
+    fireEvent.click(uploadBtn);
+    expect(screen.getByText(/INGEST RECORDED FOOTAGE/i)).toBeInTheDocument();
+  });
+
+  it('renders uploaded camera sources in selector tabs and allows selection', () => {
+    const handleSelectCamera = vi.fn();
+    const camerasWithUploaded: CameraResponse[] = [
+      ...mockCameras,
+      {
+        camera_id: 'CAM-UPLOAD-XYZ',
+        name: 'Sector 5 Boundary',
+        source_type: 'file',
+        status: 'online',
+        operational_status: 'READY',
+        resolution: '1920x1080',
+        source_fps: 30.0,
+      },
+    ];
+
+    render(
+      <CameraPanel
+        cameras={camerasWithUploaded}
+        selectedCameraId="CAM-01"
+        onSelectCamera={handleSelectCamera}
+      />
+    );
+
+    const uploadedTab = screen.getByRole('tab', { name: /CAM-UPLOAD-XYZ/i });
+    expect(uploadedTab).toBeInTheDocument();
+
+    fireEvent.click(uploadedTab);
+    expect(handleSelectCamera).toHaveBeenCalledWith('CAM-UPLOAD-XYZ');
+  });
 });
+

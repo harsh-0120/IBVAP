@@ -59,7 +59,31 @@ class CameraResponse(BaseModel):
     resolution: Optional[str] = Field(default=None, description="Camera native resolution")
     source_fps: Optional[float] = Field(default=None, description="Native source FPS")
     processing_fps: Optional[float] = Field(default=None, description="Live AI processing FPS")
+    is_protected: bool = Field(default=False, description="Whether camera is a protected default demo source")
     details: Optional[Dict[str, Any]] = Field(default=None, description="Stream technical properties")
+
+
+class TimeSeriesPoint(BaseModel):
+    """Incident count bucketed for a specific time interval."""
+    time_bucket: str = Field(..., description="Readable bucket label (e.g. 14:00 or 2026-09-27)")
+    iso_timestamp: str = Field(..., description="Bucket ISO 8601 UTC timestamp")
+    timestamp: float = Field(..., description="Bucket start unix epoch timestamp")
+    count: int = Field(default=0, description="Total incidents in this bucket")
+    intrusions: int = Field(default=0, description="Zone intrusions in this bucket")
+    tripwires: int = Field(default=0, description="Tripwire crossings in this bucket")
+
+
+class AnalyticsResponse(BaseModel):
+    """Aggregated surveillance analytics response."""
+    time_range: str = Field(..., description="Queried time range: 24h, 7d, all")
+    total_incidents: int = Field(..., description="Total incidents in range")
+    incidents_over_time: List[TimeSeriesPoint] = Field(default_factory=list, description="Time series incident distribution")
+    incidents_by_type: Dict[str, int] = Field(default_factory=dict, description="Counts by event type")
+    incidents_by_camera: Dict[str, int] = Field(default_factory=dict, description="Counts by camera ID")
+    incidents_by_severity: Dict[str, int] = Field(default_factory=dict, description="Counts by severity (critical, warning)")
+    camera_status_distribution: Dict[str, int] = Field(default_factory=dict, description="Camera count by status (online, ready, offline)")
+    total_cameras: int = Field(default=0, description="Total registered cameras")
+    online_cameras: int = Field(default=0, description="Online or actively processing cameras")
 
 
 class TelemetryPayload(BaseModel):
@@ -137,4 +161,18 @@ class RealtimeEvent(BaseModel):
     frame_index: int = Field(..., description="Video frame index")
     feet_point: List[float] = Field(..., description="[x, y] ground contact coordinate")
     snapshot_path: str = Field(..., description="Path to forensic snapshot file")
+
+
+class VideoUploadResponse(BaseModel):
+    """Metadata response after successful surveillance footage upload and pipeline registration."""
+    camera_id: str = Field(..., description="Assigned surveillance camera identifier")
+    name: str = Field(..., description="Display label for the video source")
+    file_path: str = Field(..., description="Server relative path to the stored video")
+    resolution: str = Field(..., description="Probed video resolution (WxH)")
+    source_fps: float = Field(..., description="Probed source framerate")
+    frame_count: int = Field(..., description="Total frames in the uploaded video")
+    duration_sec: float = Field(..., description="Duration in seconds")
+    file_size_bytes: int = Field(..., description="Total file size in bytes")
+    message: str = Field(default="Video uploaded and registered successfully.", description="Status message")
+
 

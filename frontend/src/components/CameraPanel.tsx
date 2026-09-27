@@ -1,18 +1,21 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Play, Pause, Maximize2, Layers, Video, RefreshCw, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { Play, Pause, Maximize2, Layers, Video, RefreshCw, AlertTriangle, ShieldCheck, Upload } from 'lucide-react';
 import { api } from '../services/api';
-import { CameraResponse } from '../types/api';
+import { CameraResponse, VideoUploadResponse } from '../types/api';
 import { WsTelemetryMessage } from '../types/events';
+import { VideoUploadModal } from './VideoUploadModal';
 
 interface CameraPanelProps {
   cameras?: CameraResponse[];
   selectedCameraId?: string;
   onSelectCamera?: (cameraId: string) => void;
+  onUploadSuccess?: (uploadedCamera: VideoUploadResponse) => void;
   telemetry?: WsTelemetryMessage | null;
   cameraId?: string;
   sourceType?: string;
   isOnline?: boolean;
 }
+
 
 const DEFAULT_DEMO_CAMERAS: CameraResponse[] = [
   {
@@ -51,15 +54,28 @@ export const CameraPanel: React.FC<CameraPanelProps> = ({
   cameras = DEFAULT_DEMO_CAMERAS,
   selectedCameraId = 'CAM-01',
   onSelectCamera,
+  onUploadSuccess,
   telemetry,
   isOnline = true,
 }) => {
   const [viewMode, setViewMode] = useState<'annotated' | 'raw'>('annotated');
   const [streamError, setStreamError] = useState<boolean>(false);
   const [isSwitching, setIsSwitching] = useState<boolean>(false);
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState<boolean>(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isPlaying, setIsPlaying] = useState<boolean>(true);
+
+  const handleUploadSuccess = (uploadedCam: VideoUploadResponse) => {
+    setIsUploadModalOpen(false);
+    if (onUploadSuccess) {
+      onUploadSuccess(uploadedCam);
+    }
+    if (onSelectCamera) {
+      onSelectCamera(uploadedCam.camera_id);
+    }
+  };
+
 
   const activeCamId = selectedCameraId || 'CAM-01';
   const currentCam = cameras.find((c) => c.camera_id === activeCamId) || cameras[0] || DEFAULT_DEMO_CAMERAS[0];
@@ -188,7 +204,29 @@ export const CameraPanel: React.FC<CameraPanelProps> = ({
             })}
           </div>
 
+          {/* Ingest Video / Add Camera Action */}
+          <button
+            type="button"
+            className="camera-btn mono"
+            onClick={() => setIsUploadModalOpen(true)}
+            title="Upload recorded video to ingest into live surveillance pipeline"
+            style={{
+              padding: '4px 10px',
+              fontSize: '11px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              borderColor: 'var(--accent-cyan-border)',
+              color: 'var(--accent-cyan)',
+              background: 'var(--accent-cyan-dim)',
+            }}
+          >
+            <Upload size={12} />
+            <span>UPLOAD FOOTAGE</span>
+          </button>
+
           <span className="camera-live-badge">
+
             <span
               className="status-dot status-dot-pulse"
               style={{ backgroundColor: isOnline ? 'var(--status-online)' : 'var(--text-muted)' }}
@@ -404,6 +442,14 @@ export const CameraPanel: React.FC<CameraPanelProps> = ({
           </span>
         </div>
       </div>
+
+      {/* Video Footage Ingestion Modal */}
+      <VideoUploadModal
+        isOpen={isUploadModalOpen}
+        onClose={() => setIsUploadModalOpen(false)}
+        onSuccess={handleUploadSuccess}
+      />
     </section>
   );
 };
+

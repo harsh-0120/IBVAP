@@ -75,4 +75,11 @@ describe('WebSocketService', () => {
 
     ws.disconnect();
   });
+
+  it('correctly constructs WebSocket URL without duplicate slashes from API_BASE_URL', () => {
+    const ws = new WebSocketService();
+    expect(ws['url']).toMatch(/^ws:\/\/.*\/ws\/events$/);
+    expect(ws['url']).not.toContain('//ws/events');
+  });
 });
+

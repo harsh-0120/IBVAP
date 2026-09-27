@@ -33,10 +33,12 @@ export class WebSocketService {
     if (customUrl) {
       this.url = customUrl;
     } else {
-      const base = API_BASE_URL.replace(/^http/, 'ws');
+      const sanitizedBase = API_BASE_URL.replace(/\/+$/, '');
+      const base = sanitizedBase.replace(/^http/, 'ws');
       this.url = `${base}/ws/events`;
     }
   }
+
 
   public getStatus(): WsConnectionStatus {
     return this.status;

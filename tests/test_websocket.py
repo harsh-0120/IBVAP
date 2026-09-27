@@ -79,7 +79,12 @@ def test_websocket_ping_pong(client):
         assert handshake["message_type"] == "CONNECTED"
 
         websocket.send_text("ping")
-        response = websocket.receive_text()
+        response = None
+        for _ in range(5):
+            msg = websocket.receive_text()
+            if msg == "pong":
+                response = msg
+                break
         assert response == "pong"
 
 

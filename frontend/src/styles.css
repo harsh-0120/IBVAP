@@ -335,7 +335,8 @@ html, body, #root {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 /* ==========================================================================
@@ -921,3 +922,308 @@ html, body, #root {
   height: 24px;
   opacity: 0.3;
 }
+
+/* ==========================================================================
+   Surveillance Analytics & SVG Chart System (Milestone 2)
+   ========================================================================== */
+.analytics-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  flex-shrink: 0;
+}
+
+.analytics-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: 10px;
+}
+
+.analytics-toolbar-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.section-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.time-range-group {
+  display: inline-flex;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+  gap: 2px;
+}
+
+.time-range-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: var(--font-sans);
+}
+
+.time-range-btn:hover {
+  color: var(--text-primary);
+}
+
+.time-range-btn.active {
+  background: var(--border-strong);
+  color: #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.analytics-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 12px;
+}
+
+.chart-col-lg {
+  grid-column: span 8;
+}
+
+.chart-col-sm {
+  grid-column: span 4;
+}
+
+.chart-col-half {
+  grid-column: span 6;
+}
+
+@media (max-width: 1024px) {
+  .chart-col-lg,
+  .chart-col-sm,
+  .chart-col-half {
+    grid-column: span 12;
+  }
+}
+
+.chart-card {
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  position: relative;
+  min-height: 180px;
+}
+
+.chart-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 20px;
+}
+
+.chart-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.chart-legend-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chart-loading-skeleton {
+  flex: 1;
+  background: linear-gradient(90deg, var(--bg-surface) 25%, var(--bg-surface-hover) 50%, var(--bg-surface) 75%);
+  background-size: 200% 100%;
+  animation: pulse-skeleton 1.5s infinite;
+  border-radius: var(--radius-sm);
+  min-height: 120px;
+}
+
+@keyframes pulse-skeleton {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.chart-svg-container {
+  width: 100%;
+  height: 170px;
+  position: relative;
+}
+
+.analytics-svg {
+  width: 100%;
+  height: 100%;
+}
+
+.chart-tooltip {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  background: var(--bg-root);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  pointer-events: none;
+  z-index: 10;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  white-space: nowrap;
+}
+
+.tooltip-header {
+  font-size: 10px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: 2px;
+  margin-bottom: 2px;
+}
+
+.tooltip-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 11px;
+}
+
+/* Donut Chart Layout */
+.donut-layout {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding: 8px 0;
+  gap: 16px;
+  flex: 1;
+}
+
+.donut-svg-wrapper {
+  flex-shrink: 0;
+}
+
+.donut-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+}
+
+.donut-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.legend-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.legend-name {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.legend-val {
+  font-size: 13px;
+}
+
+/* Bar Breakdown Layout */
+.bars-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 8px 0;
+  flex: 1;
+  justify-content: center;
+}
+
+.bar-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.bar-label-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+}
+
+.bar-label-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+}
+
+.bar-metrics {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.bar-track {
+  width: 100%;
+  height: 6px;
+  background: var(--bg-surface);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+.chart-empty-notice {
+  text-align: center;
+  padding: 16px;
+  color: var(--text-dim);
+  letter-spacing: 0.05em;
+}
+
+/* Color Tokens & Dot */
+.bg-cyan { background-color: var(--accent-cyan); }
+.bg-critical { background-color: var(--severity-critical); }
+.bg-warning { background-color: var(--severity-warning); }
+.text-cyan { color: var(--accent-cyan); }
+.text-critical { color: var(--severity-critical); }
+.text-warning { color: var(--severity-warning); }
+.text-xs { font-size: 11px; }
+.text-2xs { font-size: 9px; }
+
+.legend-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+

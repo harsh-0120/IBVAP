@@ -41,6 +41,7 @@ data/*.db
 data/events.db
 data/validation_events.db
 data/validation_road_events.db
+data/registered_cameras.json
 
 # Generated Forensic Snapshots & Validation Artifacts
 data/snapshots/*
@@ -54,6 +55,9 @@ data/cam01_recall_experiment_results.json
 data/sample_videos/*
 !data/sample_videos/.gitkeep
 !data/sample_videos/validation_report.json
+data/uploads/*
+!data/uploads/.gitkeep
+
 
 # Model Weights (Ultralytics auto-downloads on first run; or use Git LFS)
 *.pt

@@ -1,7 +1,7 @@
 # IBVAP: Intelligent Border Video Analytics Platform Dependencies
 
 # Milestone 1: Core Stream Ingestion & Configuration
-opencv-python>=4.9.0
+opencv-python-headless>=4.9.0
 numpy>=1.26.0
 pyyaml>=6.0.1
 pydantic>=2.6.0
@@ -16,13 +16,16 @@ lap>=0.5.12
 # Milestone 4: Spatial Analytics (Virtual Fences & Tripwires)
 shapely>=2.0.3
 
-# Milestone 5: Incident Management & SQLite Event Logging
+# Milestone 5: Incident Management & SQLite/PostgreSQL Event Logging
 sqlalchemy>=2.0.27
+psycopg2-binary>=2.9.9
+
 
 # Milestone 6A: FastAPI Backend REST API
 fastapi>=0.110.0
 uvicorn>=0.28.0
 httpx>=0.27.0
+python-multipart>=0.0.9
 
 # Milestone 6B: Real-time WebSocket Event Stream
 websockets>=12.0

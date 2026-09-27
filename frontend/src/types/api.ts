@@ -53,6 +53,8 @@ export interface CameraResponse {
   resolution?: string;
   source_fps?: number;
   processing_fps?: number;
+  is_protected?: boolean;
+  rtsp_url_masked?: string;
   details?: {
     name?: string;
     resolution?: string;
@@ -64,6 +66,27 @@ export interface CameraResponse {
     buffer_size?: number;
     [key: string]: unknown;
   };
+}
+
+export interface TimeSeriesPoint {
+  time_bucket: string;
+  iso_timestamp: string;
+  timestamp: number;
+  count: number;
+  intrusions: number;
+  tripwires: number;
+}
+
+export interface AnalyticsResponse {
+  time_range: string;
+  total_incidents: number;
+  incidents_over_time: TimeSeriesPoint[];
+  incidents_by_type: Record<string, number>;
+  incidents_by_camera: Record<string, number>;
+  incidents_by_severity: Record<string, number>;
+  camera_status_distribution: Record<string, number>;
+  total_cameras: number;
+  online_cameras: number;
 }
 
 export interface PolygonZoneSchema {
@@ -85,3 +108,16 @@ export interface ZoneResponse {
   zones: PolygonZoneSchema[];
   tripwires: TripwireSchema[];
 }
+
+export interface VideoUploadResponse {
+  camera_id: string;
+  name: string;
+  file_path: string;
+  resolution: string;
+  source_fps: number;
+  frame_count: number;
+  duration_sec: number;
+  file_size_bytes: number;
+  message: string;
+}
+

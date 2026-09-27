@@ -9,22 +9,29 @@ import {
 import { api } from '../services/api';
 import { wsService } from '../services/websocket';
 import {
+  AnalyticsResponse,
   CameraResponse,
   HealthResponse,
   IncidentResponse,
   StatsResponse,
+  VideoUploadResponse,
   ZoneResponse,
 } from '../types/api';
+
 import { WsConnectionStatus, WsIncidentEvent, WsTelemetryMessage } from '../types/events';
 import { StatCard } from '../components/StatCard';
 import { CameraPanel } from '../components/CameraPanel';
 import { IncidentList } from '../components/IncidentList';
 import { ZoneSummary } from '../components/ZoneSummary';
+import { AnalyticsDashboardSection } from '../components/AnalyticsCharts';
 
 export const Overview: React.FC = () => {
   // State
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [stats, setStats] = useState<StatsResponse | null>(null);
+  const [analytics, setAnalytics] = useState<AnalyticsResponse | null>(null);
+  const [timeRange, setTimeRange] = useState<'24h' | '7d' | 'all'>('24h');
+  const [analyticsLoading, setAnalyticsLoading] = useState<boolean>(true);
   const [incidents, setIncidents] = useState<IncidentResponse[]>([]);
   const [cameras, setCameras] = useState<CameraResponse[]>([]);
   const [zones, setZones] = useState<ZoneResponse | null>(null);
@@ -34,16 +41,37 @@ export const Overview: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [wsStatus, setWsStatus] = useState<WsConnectionStatus>('DISCONNECTED');
 
+  // Analytics Query Callback
+  const loadAnalytics = useCallback(async (range: '24h' | '7d' | 'all') => {
+    try {
+      const data = await api.getAnalytics(range);
+      if (data && data.total_incidents !== undefined) {
+        setAnalytics(data);
+      }
+    } catch (err) {
+      console.warn('Analytics fetch notice:', err);
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  }, []);
+
+  const handleTimeRangeChange = (newRange: '24h' | '7d' | 'all') => {
+    setTimeRange(newRange);
+    setAnalyticsLoading(true);
+    loadAnalytics(newRange);
+  };
+
   // Initial Data Fetch
   const loadData = useCallback(async () => {
     try {
-      const [healthData, statsData, eventsData, camerasData, zonesData] =
+      const [healthData, statsData, eventsData, camerasData, zonesData, analyticsData] =
         await Promise.allSettled([
           api.getHealth(),
           api.getStats(),
           api.getEvents({ limit: 20 }),
           api.getCameras(),
           api.getZones(),
+          api.getAnalytics(timeRange),
         ]);
 
       if (healthData.status === 'fulfilled') {
@@ -68,7 +96,6 @@ export const Overview: React.FC = () => {
       if (camerasData.status === 'fulfilled') {
         setCameras(camerasData.value);
         if (camerasData.value.length > 0) {
-          // Select first available camera if not already set
           setSelectedCameraId((prev) => prev || camerasData.value[0].camera_id);
         }
       }
@@ -76,12 +103,17 @@ export const Overview: React.FC = () => {
       if (zonesData.status === 'fulfilled') {
         setZones(zonesData.value);
       }
+
+      if (analyticsData.status === 'fulfilled') {
+        setAnalytics(analyticsData.value);
+        setAnalyticsLoading(false);
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to connect to surveillance backend');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [timeRange]);
 
   useEffect(() => {
     loadData();
@@ -91,10 +123,11 @@ export const Overview: React.FC = () => {
       api.getHealth().then(setHealth).catch(() => setHealth({ status: 'offline', service: 'IBVAP', version: '0.1.0' }));
       api.getStats().then(setStats).catch(() => {});
       api.getCameras().then(setCameras).catch(() => {});
+      api.getAnalytics(timeRange).then(setAnalytics).catch(() => {});
     }, 12000);
 
     return () => clearInterval(interval);
-  }, [loadData]);
+  }, [loadData, timeRange]);
 
   // Handle camera selection change
   const handleSelectCamera = useCallback(async (cameraId: string) => {
@@ -108,6 +141,18 @@ export const Overview: React.FC = () => {
       console.warn(`Camera switch notice for ${cameraId}:`, err);
     }
   }, []);
+
+  // Handle newly uploaded and registered surveillance footage
+  const handleUploadSuccess = useCallback(async (newCam: VideoUploadResponse) => {
+    try {
+      const refreshedCameras = await api.getCameras();
+      setCameras(refreshedCameras);
+      await handleSelectCamera(newCam.camera_id);
+    } catch (err) {
+      console.warn('Camera refresh after upload notice:', err);
+    }
+  }, [handleSelectCamera]);
+
 
   // WebSocket Live Events & Telemetry
   useEffect(() => {
@@ -137,6 +182,9 @@ export const Overview: React.FC = () => {
           tripwire_crossings: !isZone ? prev.tripwire_crossings + 1 : prev.tripwire_crossings,
         };
       });
+
+      // Update real analytics charts
+      loadAnalytics(timeRange);
     });
 
     // Real-time AI surveillance telemetry
@@ -244,9 +292,11 @@ export const Overview: React.FC = () => {
             cameras={cameras}
             selectedCameraId={selectedCameraId}
             onSelectCamera={handleSelectCamera}
+            onUploadSuccess={handleUploadSuccess}
             telemetry={telemetry}
             isOnline={currentCam.status === 'online' && systemStatus === 'online'}
           />
+
 
           <ZoneSummary zonesData={zones} loading={loading} incidents={incidents} />
         </div>
@@ -260,6 +310,14 @@ export const Overview: React.FC = () => {
           />
         </div>
       </div>
+
+      {/* Row 3: Real Surveillance Analytics & SVG Charts */}
+      <AnalyticsDashboardSection
+        analytics={analytics}
+        timeRange={timeRange}
+        onTimeRangeChange={handleTimeRangeChange}
+        loading={analyticsLoading}
+      />
     </div>
   );
 };

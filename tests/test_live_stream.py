@@ -31,7 +31,7 @@ def client_live(tmp_path):
 def test_camera_registry_metadata():
     """Verify demo camera registry lists all 3 CCTV sources with valid metadata."""
     cams = list_cameras()
-    assert len(cams) == 3
+    assert len(cams) >= 3
     cam_ids = [c.camera_id for c in cams]
     assert "CAM-01" in cam_ids
     assert "CAM-02" in cam_ids
@@ -62,7 +62,8 @@ def test_get_cameras_endpoint_returns_demo_sources(client_live):
     response = client_live.get("/api/cameras")
     assert response.status_code == 200
     data = response.json()
-    assert len(data) == 3
+    assert len(data) >= 3
+
 
     assert data[0]["camera_id"] == "CAM-01"
     assert data[0]["name"] == "Border Perimeter"

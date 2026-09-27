@@ -4,10 +4,12 @@
  */
 
 import {
+  AnalyticsResponse,
   CameraResponse,
   HealthResponse,
   IncidentResponse,
   StatsResponse,
+  VideoUploadResponse,
   ZoneResponse,
 } from '../types/api';
 
@@ -40,6 +42,17 @@ class ApiService {
     const res = await fetch(`${this.baseUrl}/api/stats`);
     if (!res.ok) {
       throw new Error(`Stats fetch failed with status ${res.status}`);
+    }
+    return res.json();
+  }
+
+  /**
+   * Surveillance analytics aggregation query
+   */
+  async getAnalytics(timeRange: string = 'all'): Promise<AnalyticsResponse> {
+    const res = await fetch(`${this.baseUrl}/api/analytics?time_range=${encodeURIComponent(timeRange)}`);
+    if (!res.ok) {
+      throw new Error(`Analytics fetch failed with status ${res.status}`);
     }
     return res.json();
   }
@@ -144,6 +157,69 @@ class ApiService {
   getLiveStreamUrl(cameraId: string): string {
     return `${this.baseUrl}/api/video/live/${encodeURIComponent(cameraId)}`;
   }
+
+  /**
+   * Upload video footage to be processed by the surveillance pipeline.
+   * Streams upload in chunks and reports progress via XMLHttpRequest.
+   */
+  uploadVideo(
+    file: File,
+    cameraName?: string,
+    onProgress?: (percent: number) => void
+  ): Promise<VideoUploadResponse> {
+    return new Promise((resolve, reject) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      if (cameraName && cameraName.trim()) {
+        formData.append('name', cameraName.trim());
+      }
+
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${this.baseUrl}/api/videos/upload`);
+
+      if (xhr.upload && onProgress) {
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable && event.total > 0) {
+            const percent = Math.min(100, Math.round((event.loaded / event.total) * 100));
+            onProgress(percent);
+          }
+        };
+      }
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const data = JSON.parse(xhr.responseText) as VideoUploadResponse;
+            resolve(data);
+          } catch {
+            reject(new Error('Invalid response received from server.'));
+          }
+        } else {
+          let errorMsg = `Upload failed with status ${xhr.status}`;
+          try {
+            const errData = JSON.parse(xhr.responseText);
+            if (errData && errData.detail) {
+              errorMsg = typeof errData.detail === 'string' ? errData.detail : JSON.stringify(errData.detail);
+            }
+          } catch {
+            // response was not JSON
+          }
+          reject(new Error(errorMsg));
+        }
+      };
+
+      xhr.onerror = () => {
+        reject(new Error('Network error during video upload. Please check connection.'));
+      };
+
+      xhr.onabort = () => {
+        reject(new Error('Video upload was cancelled.'));
+      };
+
+      xhr.send(formData);
+    });
+  }
 }
+
 
 export const api = new ApiService();

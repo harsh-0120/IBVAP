@@ -6,14 +6,17 @@ historical statistics, camera status, spatial boundaries, and forensic snapshots
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
+import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+import cv2
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import FileResponse, StreamingResponse
 import yaml
 
 from server.database import IncidentDatabase, IncidentModel
 from server.schemas import (
+    AnalyticsResponse,
     CameraResponse,
     HealthResponse,
     IncidentListResponse,
@@ -21,6 +24,7 @@ from server.schemas import (
     PolygonZoneSchema,
     StatsResponse,
     TripwireSchema,
+    VideoUploadResponse,
     ZoneCreateRequest,
     ZoneResponse,
 )
@@ -226,6 +230,53 @@ def get_stats(
         active_camera_count=1,
         camera_id=cam_id,
     )
+
+
+@router.get(
+    "/analytics",
+    response_model=AnalyticsResponse,
+    summary="Surveillance Analytics Summary",
+    description="Returns aggregated incident analytics, time series distribution, and camera status for a specified time range (24h, 7d, all).",
+)
+def get_analytics(
+    time_range: str = Query(
+        default="all",
+        pattern="^(24h|7d|all)$",
+        description="Aggregation time window: 24h, 7d, or all",
+    ),
+    db: IncidentDatabase = Depends(get_database),
+) -> AnalyticsResponse:
+    summary = db.get_analytics_summary(time_range=time_range)
+
+    try:
+        from core.camera_registry import list_cameras as get_registered_cameras
+        from core.live_stream_manager import live_stream_manager
+
+        registered = get_registered_cameras()
+        statuses = live_stream_manager.get_all_camera_statuses()
+        active_id = live_stream_manager.active_camera_id or "CAM-01"
+
+        cam_status_dist: Dict[str, int] = {}
+        online_count = 0
+        for cam in registered:
+            exists = cam.exists_on_disk
+            is_active = (cam.camera_id == active_id) and exists
+            if not exists:
+                stat = "offline"
+            elif is_active:
+                stat = "online"
+                online_count += 1
+            else:
+                stat = "ready"
+            cam_status_dist[stat] = cam_status_dist.get(stat, 0) + 1
+
+        summary["camera_status_distribution"] = cam_status_dist
+        summary["total_cameras"] = len(registered)
+        summary["online_cameras"] = online_count
+    except Exception as exc:
+        logger.warning(f"Could not retrieve camera status for analytics: {exc}")
+
+    return AnalyticsResponse(**summary)
 
 
 # --------------------------------------------------------------------------
@@ -577,5 +628,224 @@ def get_live_video(camera_id: str) -> StreamingResponse:
             "Expires": "0",
         },
     )
+
+
+# --------------------------------------------------------------------------
+# 10. Video Upload & Surveillance Pipeline Ingestion
+# --------------------------------------------------------------------------
+MAX_UPLOAD_SIZE = 500 * 1024 * 1024  # 500 MB in bytes
+CHUNK_SIZE = 1024 * 1024  # 1 MB chunk streaming
+
+
+def validate_video_signature(header_bytes: bytes) -> Tuple[bool, str]:
+    """
+    Validate binary magic bytes for supported video containers.
+    Returns (is_valid, detected_format_name).
+    """
+    if len(header_bytes) < 12:
+        return False, "unknown"
+
+    # Check for MP4 / MOV (ISO Base Media File Format: b'ftyp' within first 64 bytes)
+    if b"ftyp" in header_bytes[:64]:
+        return True, "mp4"
+
+    # Check for AVI (RIFF + AVI )
+    if header_bytes[:4] == b"RIFF" and header_bytes[8:12] == b"AVI ":
+        return True, "avi"
+
+    # Check for Matroska / WebM (EBML: 0x1A 0x45 0xDF 0xA3)
+    if header_bytes[:4] == b"\x1a\x45\xdf\xa3":
+        return True, "mkv"
+
+    return False, "unsupported"
+
+
+@router.post(
+    "/videos/upload",
+    response_model=VideoUploadResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Upload Recorded Surveillance Video",
+    description="Uploads and validates a recorded video file, streams chunks to disk with 500 MB limit, probes video container, and registers as a selectable surveillance camera feed.",
+)
+async def upload_video(
+    file: UploadFile = File(..., description="Recorded video file (MP4, AVI, MOV, MKV, WebM)"),
+    camera_name: Optional[str] = Form(default=None, description="Custom camera label for this video source"),
+) -> VideoUploadResponse:
+    if not file.filename:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Filename must not be empty.",
+        )
+
+    # 1. Sanitize filename and prevent path traversal
+    raw_filename = Path(file.filename).name
+    clean_stem = "".join(c for c in Path(raw_filename).stem if c.isalnum() or c in ("-", "_")).strip()
+    if not clean_stem:
+        clean_stem = "footage"
+
+    ext = Path(raw_filename).suffix.lower()
+    if not ext:
+        ext = ".mp4"
+
+    upload_dir = Path("data/uploads").resolve()
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    unique_suffix = uuid.uuid4().hex[:6].upper()
+    camera_id = f"CAM-UP-{unique_suffix}"
+    saved_filename = f"{camera_id.lower()}_{clean_stem}{ext}"
+    target_path = (upload_dir / saved_filename).resolve()
+
+    # Security check: verify path resolution stays within data/uploads/
+    try:
+        target_path.relative_to(upload_dir)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid filename or path traversal detected.",
+        )
+
+    bytes_written = 0
+    header_bytes = b""
+    is_header_validated = False
+
+    try:
+        with open(target_path, "wb") as out_f:
+            while True:
+                chunk = await file.read(CHUNK_SIZE)
+                if not chunk:
+                    break
+
+                bytes_written += len(chunk)
+
+                # In-flight size limit check
+                if bytes_written > MAX_UPLOAD_SIZE:
+                    raise HTTPException(
+                        status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                        detail="Uploaded video exceeds the 500 MB limit.",
+                    )
+
+                # Accumulate initial header for magic byte verification
+                if not is_header_validated:
+                    header_bytes += chunk[: 64 - len(header_bytes)]
+                    if len(header_bytes) >= 12 or len(chunk) < CHUNK_SIZE:
+                        is_valid_sig, detected_fmt = validate_video_signature(header_bytes)
+                        if not is_valid_sig:
+                            raise HTTPException(
+                                status_code=status.HTTP_400_BAD_REQUEST,
+                                detail="Invalid video file signature. Supported formats: MP4, AVI, MOV, MKV, WebM.",
+                            )
+                        is_header_validated = True
+
+                out_f.write(chunk)
+
+        # Empty file check
+        if bytes_written == 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Uploaded file is empty (0 bytes).",
+            )
+
+        # 2. Probe video with OpenCV to verify container and stream integrity
+        cap = cv2.VideoCapture(str(target_path))
+        if not cap.isOpened():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Uploaded file is corrupted or could not be decoded as a video.",
+            )
+
+        src_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        src_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        src_fps = float(cap.get(cv2.CAP_PROP_FPS) or 25.0)
+        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        cap.release()
+
+        if src_w <= 0 or src_h <= 0 or frame_count <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid video dimensions or frame count detected.",
+            )
+
+        duration_sec = round(frame_count / max(src_fps, 1.0), 2)
+        res_str = f"{src_w}x{src_h}"
+
+        # 3. Register camera in camera_registry
+        disp_name = camera_name.strip() if camera_name and camera_name.strip() else f"Uploaded: {clean_stem}"
+        rel_path = f"data/uploads/{saved_filename}"
+
+        # Default calibrated virtual perimeter boundary for uploaded footage
+        default_zones = [
+            {
+                "id": f"{camera_id}-zone-01",
+                "name": "Restricted Perimeter Sector",
+                "points": [
+                    [int(src_w * 0.35), int(src_h * 0.35)],
+                    [int(src_w * 0.95), int(src_h * 0.35)],
+                    [int(src_w * 0.95), int(src_h * 0.85)],
+                    [int(src_w * 0.35), int(src_h * 0.85)],
+                ],
+            }
+        ]
+        default_tripwires = [
+            {
+                "id": f"{camera_id}-wire-01",
+                "name": "Perimeter Demarcation Wire",
+                "start": [int(src_w * 0.20), int(src_h * 0.60)],
+                "end": [int(src_w * 0.85), int(src_h * 0.60)],
+            }
+        ]
+
+        from core.camera_registry import CameraDefinition, register_camera
+
+        cam_def = CameraDefinition(
+            camera_id=camera_id,
+            name=disp_name,
+            file_path=rel_path,
+            resolution=res_str,
+            source_fps=src_fps,
+            source_type="file",
+            aspect_ratio="16:9",
+            is_protected=False,
+            zones=default_zones,
+            tripwires=default_tripwires,
+        )
+        register_camera(cam_def, persist=True)
+
+        logger.info(
+            f"Successfully processed upload: {camera_id} ({disp_name}) | "
+            f"Res: {res_str} | FPS: {src_fps} | Frames: {frame_count} | Size: {bytes_written} bytes"
+        )
+
+        return VideoUploadResponse(
+            camera_id=camera_id,
+            name=disp_name,
+            file_path=rel_path,
+            resolution=res_str,
+            source_fps=round(src_fps, 2),
+            frame_count=frame_count,
+            duration_sec=duration_sec,
+            file_size_bytes=bytes_written,
+            message="Video uploaded and registered successfully.",
+        )
+
+    except HTTPException:
+        # Clean up partial / invalid file
+        if target_path.exists():
+            try:
+                target_path.unlink()
+            except Exception as e:
+                logger.warning(f"Could not remove invalid file {target_path}: {e}")
+        raise
+    except Exception as exc:
+        if target_path.exists():
+            try:
+                target_path.unlink()
+            except Exception as e:
+                logger.warning(f"Could not remove partial file {target_path}: {e}")
+        logger.error(f"Unexpected error processing video upload: {exc}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to process video upload: {str(exc)}",
+        )
+
 
 

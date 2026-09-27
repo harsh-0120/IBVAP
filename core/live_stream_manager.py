@@ -20,7 +20,7 @@ from typing import Any, Dict, Generator, List, Optional, Set
 import cv2
 import numpy as np
 
-from core.camera_registry import DEMO_CAMERAS, CameraDefinition, get_camera
+from core.camera_registry import DEMO_CAMERAS, CameraDefinition, get_camera, list_cameras
 from core.detector import ALL_SURVEILLANCE_CLASS_IDS, DetectorConfig, YOLODetector
 from core.incident_manager import IncidentConfig, IncidentManager, IncidentRecord
 from core.overlay_renderer import OverlayConfig, OverlayRenderer
@@ -87,7 +87,8 @@ class LiveStreamManager:
     def get_all_camera_statuses(self) -> Dict[str, str]:
         with self._lock:
             statuses = {}
-            for cid, cam in DEMO_CAMERAS.items():
+            for cam in list_cameras():
+                cid = cam.camera_id
                 if not cam.exists_on_disk:
                     statuses[cid] = "OFFLINE"
                 elif self._active_camera_id == cid and self._worker_thread and self._worker_thread.is_alive():
@@ -132,8 +133,9 @@ class LiveStreamManager:
             self._camera_status[cid] = "ONLINE / PROCESSING"
 
             # Reset other statuses to READY
-            for c in DEMO_CAMERAS:
-                if c != cid and DEMO_CAMERAS[c].exists_on_disk:
+            for c_obj in list_cameras():
+                c = c_obj.camera_id
+                if c != cid and c_obj.exists_on_disk:
                     self._camera_status[c] = "READY"
 
             # Start background processing worker
@@ -192,10 +194,12 @@ class LiveStreamManager:
                     if self._active_camera_id != cid or self._stop_event.is_set():
                         break
 
-                    # Wait for a fresh frame
-                    while self._frame_seq == last_yielded_seq:
+                    # Wait for a fresh frame (either first frame or next frame)
+                    while self._latest_jpeg is None or self._frame_seq == last_yielded_seq:
                         notified = self._condition.wait(timeout=0.2)
-                        if not notified or self._stop_event.is_set() or self._active_camera_id != cid:
+                        if self._stop_event.is_set() or self._active_camera_id != cid:
+                            break
+                        if not notified and self._worker_thread and not self._worker_thread.is_alive():
                             break
 
                     if self._latest_jpeg is None:
@@ -203,6 +207,7 @@ class LiveStreamManager:
 
                     frame_bytes = self._latest_jpeg
                     last_yielded_seq = self._frame_seq
+
 
                 # Yield multipart MJPEG frame
                 yield (

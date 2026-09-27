@@ -5,6 +5,7 @@ Command & Control REST API server for border surveillance analytics.
 
 from contextlib import asynccontextmanager
 import logging
+import os
 from pathlib import Path
 from typing import Any, Dict
 
@@ -29,9 +30,16 @@ async def lifespan(app: FastAPI):
             config = yaml.safe_load(f) or {}
 
     app.state.config = config
-    db_path = config.get("incident", {}).get("db_path", "data/events.db")
-    app.state.db = IncidentDatabase(db_path)
-    logger.info(f"IBVAP FastAPI application initialized with database: {db_path}")
+
+    # Check DATABASE_URL environment variable first, then fallback to config/default_config.yaml
+    db_env = os.environ.get("DATABASE_URL")
+    if db_env and db_env.strip():
+        db_source = db_env.strip()
+    else:
+        db_source = config.get("incident", {}).get("db_path", "data/events.db")
+
+    app.state.db = IncidentDatabase(db_source)
+    logger.info("IBVAP FastAPI application initialized database connection.")
 
     yield
 
@@ -49,21 +57,35 @@ app = FastAPI(
 )
 
 # --------------------------------------------------------------------------
-# Development CORS Configuration (allowing local dashboard development)
+# Configurable CORS Configuration (supporting Vercel + Local Development)
 # --------------------------------------------------------------------------
+DEFAULT_CORS_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:4173",
+    "http://127.0.0.1:4173",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+
+cors_env = os.environ.get("CORS_ORIGINS", "")
+if cors_env.strip():
+    configured_origins = [o.strip() for o in cors_env.split(",") if o.strip()]
+    origins = list(dict.fromkeys(DEFAULT_CORS_ORIGINS + configured_origins))
+else:
+    origins = list(DEFAULT_CORS_ORIGINS)
+
+# Strictly exclude wildcard "*" to comply with W3C CORS specifications when allow_credentials=True
+origins = [o for o in origins if o != "*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:4173",
-        "http://127.0.0.1:4173",
-        "*",
-    ],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # Include API endpoints and WebSocket endpoints
 app.include_router(router)
