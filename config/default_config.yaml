@@ -1,0 +1,154 @@
+# IBVAP Configuration: Intelligent Border Video Analytics Platform
+
+video:
+  # Source type: "file", "webcam", or "rtsp"
+  source_type: "file"
+
+  # Path to local video file (used when source_type == "file")
+  file_path: "data/sample_videos/border_perimeter_demo.mp4"
+
+  # Camera device index (used when source_type == "webcam")
+  webcam_index: 0
+
+  # RTSP stream URL (used when source_type == "rtsp")
+  rtsp_url: "rtsp://admin:password@192.168.1.100:554/stream1"
+
+  # If true, loop the video file continuously when reaching EOF (great for surveillance demos)
+  loop: true
+
+  # Ring buffer size for frame queue (1 = zero-latency, drops stale backlog frames)
+  buffer_size: 1
+
+  # Delay in seconds before attempting RTSP / camera reconnection
+  reconnect_delay_sec: 2.0
+
+  # Target frame rate throttle (null = consume at source frame rate)
+  target_fps: null
+
+detection:
+  # Model name or weights path (e.g., yolo11n.pt, yolov8n.pt, or custom weights)
+  model_name: "yolo11n.pt"
+
+  # Confidence threshold for object detection (tuned to 0.18 for optimal recall on crowded traffic)
+  conf_threshold: 0.18
+
+  # Non-Maximum Suppression (NMS) IoU threshold
+  iou_threshold: 0.45
+
+  # Input image size for inference (e.g. 640)
+  imgsz: 640
+
+  # Computation device: "auto", "cpu", "cuda", "cuda:0"
+  device: "auto"
+
+  # Target COCO class IDs (0 = person, 2 = car, 3 = motorcycle, 5 = bus, 7 = truck)
+  target_classes: [0, 2, 3, 5, 7]
+
+vehicle_detection:
+  # Enable vehicle detection & classification
+  enabled: true
+  # Supported COCO vehicle classes mapping
+  classes:
+    car: 2
+    motorcycle: 3
+    bus: 5
+    truck: 7
+  # Target vehicle class IDs
+  target_class_ids: [2, 3, 5, 7]
+  # Confidence threshold for vehicle detection
+  conf_threshold: 0.18
+
+tracking:
+  # Tracker algorithm: "bytetrack"
+  tracker_type: "bytetrack"
+
+  # High-confidence threshold for first-stage ByteTrack matching
+  track_high_thresh: 0.25
+
+  # Low-confidence threshold for second-stage ByteTrack recovery
+  track_low_thresh: 0.10
+
+  # Minimum threshold to initialize a new track
+  new_track_thresh: 0.25
+
+  # Frames to buffer lost tracks before deletion
+  track_buffer: 30
+
+  # IoU matching threshold
+  match_thresh: 0.80
+
+  # Maximum history points to store for person/vehicle movement trajectory
+  max_trajectory_length: 30
+
+  # Class names to track (person + vehicles)
+  target_classes: ["person", "car", "motorcycle", "bus", "truck"]
+
+spatial:
+  # Enable/disable spatial reasoning engine
+  enabled: true
+
+  # Debounce cooldown in seconds to prevent alert spam per track/zone
+  cooldown_sec: 5.0
+
+  # Minimum consecutive track frames before evaluating spatial rules
+  min_track_frames: 2
+
+  # Configured polygon restricted zones
+  zones:
+    - id: "restricted_zone_alpha"
+      name: "Restricted Sector Bravo"
+      type: "polygon"
+      points:
+        - [750, 260]
+        - [1220, 260]
+        - [1220, 560]
+        - [750, 560]
+
+  # Configured linear tripwires (directional boundary crossing)
+  tripwires:
+    - id: "border_tripwire_bravo"
+      name: "Perimeter Demarcation Wire"
+      type: "tripwire"
+      start: [800, 250]
+      end: [800, 570]
+
+incident:
+  # Unique identifier for this surveillance camera node
+  camera_id: "CAM-01"
+
+  # SQLite event database path
+  db_path: "data/events.db"
+
+  # Directory where incident snapshot images are stored
+  snapshot_dir: "data/snapshots"
+
+  # JPEG quality for incident snapshots (1-100)
+  jpeg_quality: 90
+
+logging:
+  level: "INFO"
+  format: "%(asctime)s [%(levelname)s] [%(name)s] %(message)s"
+
+overlay:
+  # Enable tactical bounding box annotations
+  show_box: true
+  # Show persistent ByteTrack ID badge
+  show_track_id: true
+  # Show detection confidence score
+  show_confidence: true
+  # Show ground contact feet crosshairs
+  show_feet: true
+  # Show movement trajectory breadcrumb trail
+  show_trajectory: true
+  # Maximum points in trajectory trail
+  max_trajectory_len: 20
+  # Box outline thickness in pixels
+  box_thickness: 2
+  # Font scale for labels
+  font_scale: 0.5
+  # MJPEG streaming compression quality (1-100)
+  jpeg_quality: 80
+
+
+
+

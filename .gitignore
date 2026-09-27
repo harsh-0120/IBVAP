@@ -1,0 +1,73 @@
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.pyo
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+ENV*/
+
+# Node & Frontend Build Artifacts
+node_modules/
+frontend/node_modules/
+dist/
+frontend/dist/
+dist-ssr/
+*.local
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.cache/
+
+# Environment Variables & Secrets
+.env
+.env.*
+*.env
+!.env.example
+
+# Databases & Runtime State
+*.db
+*.sqlite
+*.sqlite3
+data/*.db
+data/events.db
+data/validation_events.db
+data/validation_road_events.db
+
+# Generated Forensic Snapshots & Validation Artifacts
+data/snapshots/*
+!data/snapshots/.gitkeep
+data/validation_snapshots/
+data/live_*.png
+data/live_*.jpg
+data/cam01_recall_experiment_results.json
+
+# Large Surveillance Videos & Datasets (>5 MB binaries; use scripts/generate_sample_video.py or Git LFS)
+data/sample_videos/*
+!data/sample_videos/.gitkeep
+!data/sample_videos/validation_report.json
+
+# Model Weights (Ultralytics auto-downloads on first run; or use Git LFS)
+*.pt
+*.pth
+*.onnx
+
+# Logs & Scratch Scripts
+*.log
+scratch/
+scratch_kw.py
+
+# OS / Editor Artifacts
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
