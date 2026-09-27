@@ -97,28 +97,39 @@ class IncidentDatabase:
                 return parsed._replace(netloc=netloc).geturl()
             return url
         except Exception:
-            return "postgresql://***"
+            return "postgresql+psycopg2://***"
+
+    @staticmethod
+    def normalize_db_url(raw_url: Union[str, Path]) -> str:
+        """
+        Normalize database URLs for SQLAlchemy.
+        Ensures PostgreSQL URLs explicitly use the psycopg2 dialect driver
+        (postgresql+psycopg2://) to match the installed psycopg2-binary driver
+        and avoid ModuleNotFoundError for psycopg (v3).
+        """
+        url = str(raw_url).strip()
+        if url.startswith("postgres://"):
+            return "postgresql+psycopg2://" + url[len("postgres://"):]
+        if url.startswith("postgresql+psycopg://"):
+            return "postgresql+psycopg2://" + url[len("postgresql+psycopg://"):]
+        if url.startswith("postgresql://"):
+            return "postgresql+psycopg2://" + url[len("postgresql://"):]
+        return url
 
     def __init__(self, db_path_or_url: Optional[Union[str, Path]] = None):
         import os
 
         # Priority: explicit argument -> DATABASE_URL environment variable -> default SQLite path
         raw = db_path_or_url or os.environ.get("DATABASE_URL") or "data/events.db"
-        str_path = str(raw).strip()
+        normalized = self.normalize_db_url(raw)
 
-        # Handle legacy postgres:// URLs if provided by older cloud services
-        if str_path.startswith("postgres://"):
-            str_path = str_path.replace("postgres://", "postgresql://", 1)
-
-        is_sqlite = str_path.startswith("sqlite") or (
-            not str_path.startswith("postgresql") and not str_path.startswith("postgres")
-        )
+        is_sqlite = normalized.startswith("sqlite") or not normalized.startswith("postgresql")
 
         if is_sqlite:
-            if str_path.startswith("sqlite://"):
-                self.db_url = str_path
+            if normalized.startswith("sqlite://"):
+                self.db_url = normalized
             else:
-                p = Path(str_path)
+                p = Path(normalized)
                 p.parent.mkdir(parents=True, exist_ok=True)
                 self.db_url = f"sqlite:///{p.resolve()}"
 
@@ -129,7 +140,7 @@ class IncidentDatabase:
                 echo=False,
             )
         else:
-            self.db_url = str_path
+            self.db_url = normalized
             masked_url = self._mask_url(self.db_url)
             logger.info(f"Connecting to PostgreSQL Database: {masked_url}")
             self.engine = create_engine(

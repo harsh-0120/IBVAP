@@ -27,10 +27,11 @@ def test_sqlite_connection_arguments(tmp_path):
 
 def test_url_masking_prevents_password_exposure():
     """Verify database password is masked when logging PostgreSQL URLs."""
-    raw_url = "postgresql://postgres:MySecretPassword123@aws-0-us-east-1.pooler.supabase.com:6543/postgres?sslmode=require"
+    raw_url = "postgresql+psycopg2://postgres:MySecretPassword123@aws-0-us-east-1.pooler.supabase.com:6543/postgres?sslmode=require"
     masked = IncidentDatabase._mask_url(raw_url)
     assert "MySecretPassword123" not in masked
     assert "postgres:***@aws-0-us-east-1.pooler.supabase.com:6543" in masked
+    assert masked.startswith("postgresql+psycopg2://")
 
 
 def test_postgres_engine_arguments_separated_from_sqlite():
@@ -56,13 +57,54 @@ def test_postgres_engine_arguments_separated_from_sqlite():
         assert kwargs.get("max_overflow") == 10
 
 
-def test_legacy_postgres_prefix_rewritten_to_postgresql():
-    """Verify postgres:// is rewritten to postgresql:// for SQLAlchemy compatibility."""
+def test_postgresql_url_normalization():
+    """
+    Verify PostgreSQL URLs are normalized to postgresql+psycopg2:// to match
+    the installed psycopg2-binary driver and avoid ModuleNotFoundError for psycopg (v3).
+    """
+    # 1. postgres:// (legacy prefix)
+    assert IncidentDatabase.normalize_db_url("postgres://user:pass@host:5432/db") == \
+        "postgresql+psycopg2://user:pass@host:5432/db"
+
+    # 2. postgresql:// (default Supabase / cloud prefix)
+    assert IncidentDatabase.normalize_db_url("postgresql://user:pass@host:5432/db") == \
+        "postgresql+psycopg2://user:pass@host:5432/db"
+
+    # 3. postgresql+psycopg:// (psycopg3 prefix)
+    assert IncidentDatabase.normalize_db_url("postgresql+psycopg://user:pass@host:5432/db") == \
+        "postgresql+psycopg2://user:pass@host:5432/db"
+
+    # 4. postgresql+psycopg2:// (already correct)
+    assert IncidentDatabase.normalize_db_url("postgresql+psycopg2://user:pass@host:5432/db") == \
+        "postgresql+psycopg2://user:pass@host:5432/db"
+
+    # 5. Supabase pooling URL with query parameters
+    supabase_url = "postgresql://postgres.myproject:secret123@aws-0-us-east-1.pooler.supabase.com:6543/postgres?sslmode=require"
+    expected = "postgresql+psycopg2://postgres.myproject:secret123@aws-0-us-east-1.pooler.supabase.com:6543/postgres?sslmode=require"
+    assert IncidentDatabase.normalize_db_url(supabase_url) == expected
+
+    # 6. SQLite paths must NOT be altered
+    assert IncidentDatabase.normalize_db_url("data/events.db") == "data/events.db"
+    assert IncidentDatabase.normalize_db_url("sqlite:///data/events.db") == "sqlite:///data/events.db"
+
+
+def test_database_initialization_with_postgres_url_normalization():
+    """Verify IncidentDatabase initializes with normalized postgresql+psycopg2 URL."""
     legacy_url = "postgres://user:pass@host:5432/db"
-    with patch("server.database.create_engine"), \
+    with patch("server.database.create_engine") as mock_create_engine, \
          patch("server.database.Base.metadata.create_all"):
+        mock_engine = MagicMock()
+        mock_create_engine.return_value = mock_engine
+
         db = IncidentDatabase(legacy_url)
-        assert db.db_url.startswith("postgresql://")
+        assert db.db_url == "postgresql+psycopg2://user:pass@host:5432/db"
+        mock_create_engine.assert_called_once_with(
+            "postgresql+psycopg2://user:pass@host:5432/db",
+            pool_size=5,
+            max_overflow=10,
+            pool_pre_ping=True,
+            echo=False,
+        )
 
 
 def test_cors_configuration_parsing():
