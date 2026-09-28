@@ -93,7 +93,7 @@ export const Overview: React.FC = () => {
         setIncidents(evList);
       }
 
-      if (camerasData.status === 'fulfilled') {
+      if (camerasData.status === 'fulfilled' && Array.isArray(camerasData.value)) {
         setCameras(camerasData.value);
         if (camerasData.value.length > 0) {
           setSelectedCameraId((prev) => prev || camerasData.value[0].camera_id);
@@ -119,10 +119,31 @@ export const Overview: React.FC = () => {
     loadData();
 
     // Polling backup for statistics/health every 12 seconds
-    const interval = setInterval(() => {
-      api.getHealth().then(setHealth).catch(() => setHealth({ status: 'offline', service: 'IBVAP', version: '0.1.0' }));
+    const interval = setInterval(async () => {
+      try {
+        const healthData = await api.getHealth();
+        setHealth(healthData);
+        if (healthData && (healthData.status === 'online' || healthData.status === 'healthy')) {
+          setError((prevError) => {
+            if (prevError) {
+              // Successfully reconnected after failure — re-fetch all operational telemetry
+              loadData();
+            }
+            return null;
+          });
+        }
+      } catch {
+        setHealth({ status: 'offline', service: 'IBVAP', version: '0.1.0' });
+        setError('Backend API unreachable');
+      }
+
       api.getStats().then(setStats).catch(() => {});
-      api.getCameras().then(setCameras).catch(() => {});
+      api.getCameras().then((cams) => {
+        setCameras(cams);
+        if (cams.length > 0) {
+          setSelectedCameraId((prev) => prev || cams[0].camera_id);
+        }
+      }).catch(() => {});
       api.getAnalytics(timeRange).then(setAnalytics).catch(() => {});
     }, 12000);
 
@@ -210,8 +231,9 @@ export const Overview: React.FC = () => {
   }, []);
 
   const systemStatus = health?.status || 'offline';
-  const currentCam = cameras.find((c) => c.camera_id === selectedCameraId) ||
-    cameras[0] || { camera_id: 'CAM-01', source_type: 'file', status: 'online' };
+  const cameraList = Array.isArray(cameras) ? cameras : [];
+  const currentCam = cameraList.find((c) => c.camera_id === selectedCameraId) ||
+    cameraList[0] || { camera_id: 'CAM-01', source_type: 'file', status: 'online' };
 
   return (
     <div className="content-area">
@@ -225,14 +247,32 @@ export const Overview: React.FC = () => {
             borderRadius: 'var(--radius-sm)',
             display: 'flex',
             alignItems: 'center',
+            justifyContent: 'space-between',
             gap: '8px',
             color: 'var(--severity-critical)',
             fontSize: '12px',
           }}
           role="alert"
         >
-          <AlertCircle size={14} />
-          <span>SURVEILLANCE BACKEND OFFLINE — Live connection to FastAPI server unavailable. Retrying...</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <AlertCircle size={14} />
+            <span>SURVEILLANCE BACKEND OFFLINE — Live connection to FastAPI server unavailable. Retrying...</span>
+          </div>
+          <button
+            onClick={() => loadData()}
+            style={{
+              background: 'transparent',
+              border: '1px solid currentColor',
+              borderRadius: 'var(--radius-sm)',
+              color: 'inherit',
+              padding: '2px 10px',
+              fontSize: '11px',
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            Retry Now
+          </button>
         </div>
       )}
 

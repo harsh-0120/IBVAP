@@ -33,7 +33,7 @@ export class WebSocketService {
     if (customUrl) {
       this.url = customUrl;
     } else {
-      const sanitizedBase = API_BASE_URL.replace(/\/+$/, '');
+      const sanitizedBase = API_BASE_URL.replace(/\/+$/, '').replace(/\/api$/, '');
       const base = sanitizedBase.replace(/^http/, 'ws');
       this.url = `${base}/ws/events`;
     }

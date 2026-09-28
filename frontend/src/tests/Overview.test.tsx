@@ -85,4 +85,80 @@ describe('Overview Page', () => {
     expect(screen.getByText('RESTRICTED VIRTUAL FENCES')).toBeInTheDocument();
     expect(screen.getByText('DIRECTIONAL TRIPWIRES')).toBeInTheDocument();
   });
+
+  it('displays the offline warning banner when health check fails initially', async () => {
+    global.fetch = vi.fn().mockImplementation((url: string) => {
+      if (url.includes('/api/health')) {
+        return Promise.reject(new Error('Failed to fetch'));
+      }
+      if (url.includes('/api/cameras')) {
+        return Promise.resolve({ ok: true, json: async () => [] } as Response);
+      }
+      if (url.includes('/api/zones')) {
+        return Promise.resolve({ ok: true, json: async () => ({ zones: [], tripwires: [] }) } as Response);
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) } as Response);
+    });
+
+    render(<Overview />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+      expect(screen.getByText(/SURVEILLANCE BACKEND OFFLINE/i)).toBeInTheDocument();
+      expect(screen.getByText('Retry Now')).toBeInTheDocument();
+      expect(screen.getAllByText('OFFLINE').length).toBeGreaterThan(0);
+    });
+  });
+
+  it('recovers from offline state and clears warning banner when health check recovers', async () => {
+    let callCount = 0;
+    global.fetch = vi.fn().mockImplementation((url: string) => {
+      if (url.includes('/api/health')) {
+        callCount++;
+        if (callCount === 1) {
+          return Promise.reject(new Error('Failed to fetch'));
+        }
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ status: 'online', service: 'IBVAP', version: '0.1.0' }),
+        } as Response);
+      }
+      if (url.includes('/api/stats')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            total_incidents: 10,
+            zone_intrusions: 6,
+            tripwire_crossings: 4,
+            active_camera_count: 1,
+            camera_id: 'CAM-01',
+          }),
+        } as Response);
+      }
+      if (url.includes('/api/cameras')) {
+        return Promise.resolve({ ok: true, json: async () => [] } as Response);
+      }
+      if (url.includes('/api/zones')) {
+        return Promise.resolve({ ok: true, json: async () => ({ zones: [], tripwires: [] }) } as Response);
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) } as Response);
+    });
+
+    render(<Overview />);
+
+    // Initially offline banner is displayed
+    await waitFor(() => {
+      expect(screen.getByText(/SURVEILLANCE BACKEND OFFLINE/i)).toBeInTheDocument();
+    });
+
+    // User clicks "Retry Now" to recover
+    const retryBtn = screen.getByText('Retry Now');
+    retryBtn.click();
+
+    // After retry, banner is cleared and status is ONLINE
+    await waitFor(() => {
+      expect(screen.queryByText(/SURVEILLANCE BACKEND OFFLINE/i)).not.toBeInTheDocument();
+      expect(screen.getByText('ONLINE')).toBeInTheDocument();
+    });
+  });
 });

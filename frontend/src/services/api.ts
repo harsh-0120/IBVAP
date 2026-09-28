@@ -21,7 +21,7 @@ class ApiService {
   private baseUrl: string;
 
   constructor(baseUrl: string = API_BASE_URL) {
-    this.baseUrl = baseUrl.replace(/\/+$/, '');
+    this.baseUrl = baseUrl.replace(/\/+$/, '').replace(/\/api$/, '');
   }
 
   /**
@@ -100,7 +100,8 @@ class ApiService {
     if (!res.ok) {
       throw new Error(`Cameras fetch failed with status ${res.status}`);
     }
-    return res.json();
+    const data = await res.json();
+    return Array.isArray(data) ? data : [];
   }
 
   /**

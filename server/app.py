@@ -66,11 +66,13 @@ DEFAULT_CORS_ORIGINS = [
     "http://127.0.0.1:4173",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "https://ibvap-zeta.vercel.app",
+    "https://ibvap.vercel.app",
 ]
 
 cors_env = os.environ.get("CORS_ORIGINS", "")
 if cors_env.strip():
-    configured_origins = [o.strip() for o in cors_env.split(",") if o.strip()]
+    configured_origins = [o.strip().rstrip("/") for o in cors_env.split(",") if o.strip()]
     origins = list(dict.fromkeys(DEFAULT_CORS_ORIGINS + configured_origins))
 else:
     origins = list(DEFAULT_CORS_ORIGINS)
@@ -81,6 +83,7 @@ origins = [o for o in origins if o != "*"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    allow_origin_regex=r"^https:\/\/ibvap[a-zA-Z0-9_\-]*\.vercel\.app$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

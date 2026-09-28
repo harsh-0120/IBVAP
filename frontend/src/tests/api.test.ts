@@ -138,5 +138,11 @@ describe('ApiService', () => {
       global.XMLHttpRequest = originalXHR;
     }
   });
+
+  it('normalizes base URL by stripping trailing slashes and duplicate /api suffix', () => {
+    const customApi = new (api.constructor as any)('https://ibvap-7cgn.onrender.com/api/');
+    expect(customApi.getDemoVideoUrl()).toBe('https://ibvap-7cgn.onrender.com/api/video/demo');
+    expect(customApi.getSnapshotUrl(10)).toBe('https://ibvap-7cgn.onrender.com/api/events/10/snapshot');
+  });
 });
 

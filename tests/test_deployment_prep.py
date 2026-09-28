@@ -108,24 +108,104 @@ def test_database_initialization_with_postgres_url_normalization():
 
 
 def test_cors_configuration_parsing():
-    """Verify CORS origins parsing from environment, preservation of localhost, and wildcard exclusion."""
+    """Verify CORS origins parsing from environment, preservation of localhost, trailing slash trimming, and wildcard exclusion."""
     from server.app import DEFAULT_CORS_ORIGINS
 
-    # 1. Default origins include localhost ports
+    # 1. Default origins include localhost ports and production Vercel origins
     assert "http://localhost:5173" in DEFAULT_CORS_ORIGINS
     assert "http://127.0.0.1:5173" in DEFAULT_CORS_ORIGINS
+    assert "https://ibvap-zeta.vercel.app" in DEFAULT_CORS_ORIGINS
+    assert "https://ibvap.vercel.app" in DEFAULT_CORS_ORIGINS
 
-    # 2. Test environment variable parsing
-    test_env = "https://ibvap.vercel.app, https://custom-domain.org, *"
-    configured_origins = [o.strip() for o in test_env.split(",") if o.strip()]
+    # 2. Test environment variable parsing with trailing slashes
+    test_env = "https://ibvap.vercel.app/, https://custom-domain.org/, *"
+    configured_origins = [o.strip().rstrip("/") for o in test_env.split(",") if o.strip()]
     origins = list(dict.fromkeys(DEFAULT_CORS_ORIGINS + configured_origins))
     # Wildcard must be filtered out
     origins = [o for o in origins if o != "*"]
 
     assert "https://ibvap.vercel.app" in origins
     assert "https://custom-domain.org" in origins
+    assert "https://custom-domain.org/" not in origins
     assert "http://localhost:5173" in origins
     assert "*" not in origins
+
+
+def test_cors_middleware_production_origin():
+    """Verify FastAPI CORSMiddleware allows exact production origin on GET requests."""
+    from fastapi.testclient import TestClient
+    from server.app import app
+
+    client = TestClient(app)
+    response = client.get("/api/health", headers={"Origin": "https://ibvap-zeta.vercel.app"})
+    assert response.status_code == 200
+    assert response.headers.get("access-control-allow-origin") == "https://ibvap-zeta.vercel.app"
+    assert response.headers.get("access-control-allow-credentials") == "true"
+
+
+def test_cors_middleware_preflight_options():
+    """Verify FastAPI CORSMiddleware accepts OPTIONS preflight from production origin."""
+    from fastapi.testclient import TestClient
+    from server.app import app
+
+    client = TestClient(app)
+    # Test GET preflight
+    response = client.options(
+        "/api/health",
+        headers={
+            "Origin": "https://ibvap-zeta.vercel.app",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+    assert response.status_code == 200
+    assert response.headers.get("access-control-allow-origin") == "https://ibvap-zeta.vercel.app"
+    assert response.headers.get("access-control-allow-credentials") == "true"
+
+    # Test POST preflight
+    post_preflight = client.options(
+        "/api/videos/upload",
+        headers={
+            "Origin": "https://ibvap-zeta.vercel.app",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+    assert post_preflight.status_code == 200
+    assert post_preflight.headers.get("access-control-allow-origin") == "https://ibvap-zeta.vercel.app"
+
+
+def test_cors_middleware_preview_deployments_regex():
+    """Verify Vercel preview deployments matching regex are authorized."""
+    from fastapi.testclient import TestClient
+    from server.app import app
+
+    client = TestClient(app)
+    response = client.get("/api/health", headers={"Origin": "https://ibvap-preview-123.vercel.app"})
+    assert response.status_code == 200
+    assert response.headers.get("access-control-allow-origin") == "https://ibvap-preview-123.vercel.app"
+
+
+def test_cors_middleware_rejects_unauthorized_origins():
+    """Verify unauthorized origins receive no CORS header on simple requests and 400 on preflight."""
+    from fastapi.testclient import TestClient
+    from server.app import app
+
+    client = TestClient(app)
+    # Simple request: server responds but does NOT attach allow-origin header
+    response = client.get("/api/health", headers={"Origin": "https://malicious-attacker.com"})
+    assert response.status_code == 200
+    assert response.headers.get("access-control-allow-origin") is None
+
+    # Preflight request: must be rejected with 400
+    preflight = client.options(
+        "/api/health",
+        headers={
+            "Origin": "https://malicious-attacker.com",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+    assert preflight.status_code == 400
+    assert "Disallowed CORS origin" in preflight.text
 
 
 def test_vercel_json_configuration():
